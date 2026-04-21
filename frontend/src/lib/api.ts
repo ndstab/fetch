@@ -2,6 +2,17 @@ import type { Option, Quest, TimelineRow } from './types';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:3001';
 
+export async function getConfig(): Promise<{
+  mode: 'mock' | 'real';
+  walletAddress: string | null;
+  apiBase: string;
+  serviceFeeBps: number;
+}> {
+  const res = await fetch(`${API_BASE}/api/config`);
+  if (!res.ok) throw new Error(`getConfig: ${res.status}`);
+  return res.json();
+}
+
 export async function createQuest(body: {
   brief: string;
   address: string;

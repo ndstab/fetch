@@ -10,6 +10,7 @@ import {
 } from '../db/queries.js';
 import { broadcast } from './sse.js';
 import { locus } from '../locus/index.js';
+import { config } from '../config.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -59,9 +60,9 @@ async function setStatus(questId, status) {
   broadcast(questId, { type: 'status', status, quest: row });
 }
 
-export function startSimulatedQuest(questId) {
+export function startSimulatedQuest(questId, opts = {}) {
   // Fire and forget; errors log but don't bubble.
-  run(questId).catch(async (err) => {
+  run(questId, opts).catch(async (err) => {
     console.error(`[sim ${questId}] fatal:`, err);
     try {
       await log(questId, 'system', `Fatal error: ${err.message}`, { level: 'error' });
@@ -70,30 +71,32 @@ export function startSimulatedQuest(questId) {
   });
 }
 
-async function run(questId) {
+async function run(questId, { skipContainerDeploy = false } = {}) {
   const L = locus();
   const q = await getQuest(questId);
   if (!q) return;
 
-  // --- Phase 0: container spin-up ---
-  await setStatus(questId, 'hunting');
-  await log(questId, 'system', 'Deploying quest container on Build with Locus…');
-  const container = await L.deployQuestContainer({
-    questId,
-    imageUri: 'mock://fetch/quest-runtime',
-    env: { QUEST_ID: questId },
-  });
-  await updateQuest(questId, { container_id: container.serviceId, container_url: container.url });
-  await sleep(1200);
-  await log(questId, 'system', `Container healthy at ${container.url}`, { level: 'success' });
+  if (!skipContainerDeploy) {
+    // --- Phase 0: container spin-up (mock mode only) ---
+    await setStatus(questId, 'hunting');
+    await log(questId, 'system', 'Deploying quest container on Build with Locus…');
+    const container = await L.deployQuestContainer({
+      questId,
+      imageUri: 'mock://fetch/quest-runtime',
+      env: { QUEST_ID: questId },
+    });
+    await updateQuest(questId, { container_id: container.serviceId, container_url: container.url });
+    await sleep(1200);
+    await log(questId, 'system', `Container healthy at ${container.url}`, { level: 'success' });
 
-  // --- Phase 0.5: sub-wallet ---
-  const sw = await L.createSubwallet({
-    amountUsdc: q.total_charged_usdc,
-    label: `fetch-quest-${questId}`,
-  });
-  await updateQuest(questId, { subwallet_id: sw.subwalletId });
-  await log(questId, 'system', `Funded sub-wallet ${sw.subwalletId} with $${sw.balanceUsdc}`);
+    // --- Phase 0.5: sub-wallet ---
+    const sw = await L.createSubwallet({
+      amountUsdc: q.total_charged_usdc,
+      label: `fetch-quest-${questId}`,
+    });
+    await updateQuest(questId, { subwallet_id: sw.subwalletId });
+    await log(questId, 'system', `Funded sub-wallet ${sw.subwalletId} with $${sw.balanceUsdc}`);
+  }
 
   // --- Phase 1: plan ---
   await sleep(800);
@@ -169,12 +172,40 @@ export async function continueAfterPick(questId, chosenIdx) {
 
   // --- Phase 5: settle ---
   await sleep(700);
-  const refund = await L.refundSubwallet(q.subwallet_id);
-  await updateQuest(questId, { refunded_usdc: refund.refundedUsdc });
-  await log(questId, 'settle', `Refunded $${refund.refundedUsdc.toFixed(2)} unspent USDC to your wallet`, { level: 'success' });
 
-  await L.teardownContainer(`proj_for_${q.container_id}`);
-  await log(questId, 'settle', 'Quest container torn down', { level: 'success' });
+  // Refund: total charged − actual card amount (reclaims the 5% buffer and
+  // any delta if the final merchant price was lower than projected).
+  const refundAmount = Math.max(0, Math.round((Number(q.total_charged_usdc) - cardAmount) * 100) / 100);
+
+  let refundTxHash = null;
+  if (config.locus.mode === 'real' && q.payer_address && refundAmount > 0) {
+    try {
+      const tx = await L.sendUsdc({
+        to: q.payer_address,
+        amountUsdc: refundAmount,
+        reason: `Fetch refund for ${questId}`,
+      });
+      refundTxHash = tx.txHash;
+      await log(questId, 'settle',
+        `Refunded $${refundAmount.toFixed(2)} USDC to ${q.payer_address.slice(0, 6)}…${q.payer_address.slice(-4)}${tx.txHash ? ` (tx ${tx.txHash.slice(0, 10)}…)` : ''}`,
+        { level: 'success' });
+    } catch (err) {
+      await log(questId, 'settle', `Refund failed: ${err.message}`, { level: 'error' });
+    }
+  } else {
+    // Mock mode or missing payer address: best-effort adapter call.
+    const refund = await L.refundSubwallet(q.subwallet_id).catch(() => ({ refundedUsdc: refundAmount }));
+    await log(questId, 'settle', `Refunded $${(refund.refundedUsdc || refundAmount).toFixed(2)} unspent USDC to your wallet`, { level: 'success' });
+  }
+  await updateQuest(questId, { refunded_usdc: refundAmount, refund_tx_hash: refundTxHash });
+
+  const projectId = q.container_project_id || `proj_for_${q.container_id}`;
+  try {
+    await L.teardownContainer(projectId);
+    await log(questId, 'settle', 'Quest container torn down', { level: 'success' });
+  } catch (err) {
+    await log(questId, 'settle', `Teardown warning: ${err.message}`, { level: 'warn' });
+  }
 
   await updateQuest(questId, { completed_at: new Date() });
   await setStatus(questId, 'complete');

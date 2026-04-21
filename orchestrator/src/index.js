@@ -16,6 +16,16 @@ app.use(express.json({ limit: '256kb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true, mode: config.locus.mode }));
 
+// Lightweight public config so the frontend can branch on mode/env.
+app.get('/api/config', (_req, res) => {
+  res.json({
+    mode: config.locus.mode,
+    walletAddress: config.locus.walletAddress || null,
+    apiBase: config.locus.apiBase,
+    serviceFeeBps: config.serviceFeeBps,
+  });
+});
+
 app.use('/api/quest', questRouter);
 
 // Mock-only helper: render a tiny stand-in checkout page

@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Logo } from '../components/Logo';
-import { createQuest } from '../lib/api';
+import { createQuest, getConfig } from '../lib/api';
 
 export function Landing() {
   const nav = useNavigate();
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'mock' | 'real' | null>(null);
+  useEffect(() => { getConfig().then((c) => setMode(c.mode)).catch(() => setMode(null)); }, []);
   const [form, setForm] = useState({
     brief: '',
     address: '',
@@ -48,8 +50,8 @@ export function Landing() {
         <Logo />
         <div className="flex items-center gap-5 text-xs font-mono text-ink-400">
           <span className="hidden md:inline-flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-lime animate-pulse-soft" />
-            mock mode
+            <span className={`w-1.5 h-1.5 rounded-full animate-pulse-soft ${mode === 'real' ? 'bg-flame' : 'bg-lime'}`} />
+            {mode === 'real' ? 'live — real USDC' : mode === 'mock' ? 'mock mode' : '…'}
           </span>
           <a
             href="https://docs.paywithlocus.com"

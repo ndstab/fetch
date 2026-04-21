@@ -35,14 +35,29 @@ router.post('/create', async (req, res) => {
       cancelUrl: `${config.frontendUrl}/?cancelled=${id}`,
       webhookUrl: `${config.publicUrl}/webhooks/checkout`,
       metadata: { questId: id },
+      receiptConfig: {
+        enabled: true,
+        fields: {
+          creditorName: 'Fetch',
+          lineItems: [
+            { description: 'Quest budget (goods + shipping)', amount: String(budget.toFixed(2)) },
+            { description: 'Fetch service fee (10%)', amount: String(fee.toFixed(2)) },
+          ],
+          subtotal: String(total.toFixed(2)),
+          supportEmail: email,
+        },
+      },
     });
 
-    const quest = await insertQuest({
+    let quest = await insertQuest({
       id, userId: null, brief, address, phone, email,
       budgetUsdc: budget, serviceFeeUsdc: fee, totalChargedUsdc: total,
       deadline: deadline || null, autoconfirm,
       checkoutSessionId: session.sessionId,
     });
+    if (session.webhookSecret) {
+      quest = await updateQuest(id, { webhook_secret: session.webhookSecret });
+    }
 
     res.json({
       quest,
@@ -113,8 +128,18 @@ router.post('/:id/cancel', async (req, res) => {
   // Best-effort teardown + refund
   try {
     const L = locus();
-    if (q.container_id) await L.teardownContainer(`proj_for_${q.container_id}`);
-    if (q.subwallet_id) await L.refundSubwallet(q.subwallet_id);
+    const projectId = q.container_project_id || (q.container_id ? `proj_for_${q.container_id}` : null);
+    if (projectId) await L.teardownContainer(projectId);
+    if (config.locus.mode === 'real' && q.payer_address && q.status !== 'created') {
+      // Refund the whole escrow since no purchase happened.
+      await L.sendUsdc({
+        to: q.payer_address,
+        amountUsdc: Number(q.total_charged_usdc),
+        reason: `Fetch quest ${q.id} cancelled`,
+      }).catch((err) => console.warn('[cancel refund]', err.message));
+    } else if (q.subwallet_id) {
+      await L.refundSubwallet(q.subwallet_id);
+    }
   } catch (err) {
     console.error('[cancel teardown]', err);
   }

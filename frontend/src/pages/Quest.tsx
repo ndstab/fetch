@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { LocusCheckout } from '@withlocus/checkout-react';
 import { Logo } from '../components/Logo';
 import { StatusChip } from '../components/StatusChip';
 import { Timeline } from '../components/Timeline';
@@ -105,6 +106,21 @@ export function Quest() {
           <QuestBrief quest={quest} />
 
           <AnimatePresence mode="wait">
+            {quest.status === 'created' && quest.checkout_session_id && (
+              <motion.div
+                key="pay"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="mt-10"
+              >
+                <PaymentGate
+                  sessionId={quest.checkout_session_id}
+                  total={Number(quest.total_charged_usdc)}
+                />
+              </motion.div>
+            )}
+
             {quest.status === 'awaiting_pick' && options.length > 0 && (
               <motion.div
                 key="picker"
@@ -288,6 +304,43 @@ function Stat({ label, value, mono, highlight }: { label: string; value: string;
       <dd className={`tabular-nums ${mono ? 'font-mono' : 'font-sans'} ${highlight ? 'text-lime' : 'text-ink-100'}`}>
         {value}
       </dd>
+    </div>
+  );
+}
+
+function PaymentGate({ sessionId, total }: { sessionId: string; total: number }) {
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <div className="rounded-2xl border border-lime/30 bg-gradient-to-br from-lime/5 to-transparent p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-2 h-2 rounded-full bg-flame animate-pulse-soft" />
+        <span className="text-[11px] font-mono uppercase tracking-widest text-flame">
+          Awaiting payment
+        </span>
+      </div>
+      <h2 className="font-display text-2xl text-ink-100 mb-1">
+        Fund this quest — ${total.toFixed(2)} USDC
+      </h2>
+      <p className="text-sm text-ink-400 mb-5">
+        Pay from your Locus wallet. Unused budget refunds automatically.
+      </p>
+      <div className="rounded-xl overflow-hidden bg-ink-50/90" style={{ minHeight: 680 }}>
+        <LocusCheckout
+          sessionId={sessionId}
+          mode="embedded"
+          onSuccess={() => { /* SSE will flip status to 'paid' via webhook */ }}
+          onCancel={() => setErr('Payment cancelled — you can retry by refreshing.')}
+          onError={(e) => setErr(e.message || 'Checkout error')}
+        />
+      </div>
+      <p className="text-[11px] font-mono text-ink-500 mt-3">
+        Session {sessionId.slice(0, 10)}… · 30-minute expiry · settles on Base
+      </p>
+      {err && (
+        <div className="mt-3 text-sm text-red-300 bg-red-500/10 border border-red-400/30 rounded-lg px-4 py-3">
+          {err}
+        </div>
+      )}
     </div>
   );
 }

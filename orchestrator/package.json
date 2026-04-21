@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "bootstrap-locus": "node scripts/bootstrap-locus.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

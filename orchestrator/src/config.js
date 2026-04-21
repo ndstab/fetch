@@ -15,9 +15,13 @@ export const config = {
   locus: {
     mode: process.env.LOCUS_MODE || 'mock', // 'mock' | 'real'
     apiKey: process.env.LOCUS_API_KEY || '',
-    apiBase: process.env.LOCUS_API_BASE || 'https://api.paywithlocus.com',
+    // Beta default: https://beta-api.paywithlocus.com/api
+    // Production:   https://api.paywithlocus.com/api
+    apiBase: process.env.LOCUS_API_BASE || 'https://beta-api.paywithlocus.com/api',
     buildApiBase: process.env.LOCUS_BUILD_API_BASE || 'https://api.buildwithlocus.com/v1',
     webhookSecret: process.env.LOCUS_WEBHOOK_SECRET || '',
+    walletAddress: process.env.LOCUS_WALLET_ADDRESS || '',
+    checkoutUrl: process.env.LOCUS_CHECKOUT_URL || 'https://checkout.paywithlocus.com',
   },
 
   questImageUri: process.env.QUEST_IMAGE_URI || 'registry.example.com/fetch/quest-runtime:latest',
