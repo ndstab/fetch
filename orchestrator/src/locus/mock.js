@@ -32,7 +32,8 @@ export function createMockLocus() {
             sessionId,
             amountUsdc: session.amountUsdc,
             metadata: session.metadata,
-            txHash: `0xmock${nanoid(12)}`,
+            paymentTxHash: `0xmock${nanoid(12)}`,
+            payerAddress: `0xmock${nanoid(10)}payer`,
           },
         }),
       });

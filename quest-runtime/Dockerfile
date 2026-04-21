@@ -20,7 +20,6 @@ RUN pip install --upgrade pip \
  && python -m playwright install chromium
 
 COPY src ./src
-COPY scripts ./scripts
 
 EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=3s --start-period=30s --retries=3 \

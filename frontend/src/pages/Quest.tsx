@@ -7,7 +7,7 @@ import { StatusChip } from '../components/StatusChip';
 import { Timeline } from '../components/Timeline';
 import { OptionCard } from '../components/OptionCard';
 import {
-  cancelQuest, pickOption, streamQuest,
+  cancelQuest, getConfig, pickOption, reconcileQuestPayment, streamQuest,
 } from '../lib/api';
 import type { Option, Quest as QuestT, TimelineRow } from '../lib/types';
 
@@ -18,7 +18,18 @@ export function Quest() {
   const [options, setOptions] = useState<Option[]>([]);
   const [picking, setPicking] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [mode, setMode] = useState<'mock' | 'real' | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string>('https://checkout.paywithlocus.com');
   const seenIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    getConfig()
+      .then((c) => {
+        setMode(c.mode);
+        setCheckoutUrl(resolveCheckoutUrl(c.apiBase));
+      })
+      .catch(() => setMode('mock'));
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -41,6 +52,22 @@ export function Quest() {
     });
     return close;
   }, [id]);
+
+  useEffect(() => {
+    if (!id || mode !== 'real' || !quest?.checkout_session_id || quest.status !== 'created') return;
+    let stopped = false;
+    const tick = async () => {
+      try {
+        await reconcileQuestPayment(id);
+      } catch {
+      }
+      if (!stopped) setTimeout(tick, 3000);
+    };
+    tick();
+    return () => {
+      stopped = true;
+    };
+  }, [id, mode, quest?.checkout_session_id, quest?.status]);
 
   const activePhase = useMemo(() => {
     if (!quest) return 'system';
@@ -117,6 +144,8 @@ export function Quest() {
                 <PaymentGate
                   sessionId={quest.checkout_session_id}
                   total={Number(quest.total_charged_usdc)}
+                  mode={mode}
+                  checkoutUrl={checkoutUrl}
                 />
               </motion.div>
             )}
@@ -129,7 +158,7 @@ export function Quest() {
                 exit={{ opacity: 0 }}
                 className="mt-10"
               >
-                <PickerHeader />
+                <PickerHeader optionCount={options.length} />
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {options.map((o, i) => (
                     <OptionCard
@@ -241,7 +270,7 @@ function Pill({ label, value, highlight }: { label: string; value: string; highl
   );
 }
 
-function PickerHeader() {
+function PickerHeader({ optionCount }: { optionCount?: number }) {
   return (
     <div className="mb-5">
       <div className="flex items-center gap-2 mb-2">
@@ -250,9 +279,11 @@ function PickerHeader() {
           Your pick
         </span>
       </div>
-      <h2 className="font-display text-2xl text-ink-100 mb-1">Three options. One click.</h2>
+      <h2 className="font-display text-2xl text-ink-100 mb-1">
+        {optionCount === 3 ? 'Three options. One click.' : `${optionCount ?? ''} options. One click.`}
+      </h2>
       <p className="text-sm text-ink-400">
-        The agent narrowed 14 listings down to these three. Pick one and it buys it.
+        The agent ranked its top picks. Choose one and it checks out on the merchant site.
       </p>
     </div>
   );
@@ -283,14 +314,14 @@ function Receipt({ quest, options }: { quest: QuestT; options: Option[] }) {
         <Stat label="Saved" value={`$${(Number(quest.budget_usdc) - Number(quest.final_cost_usdc || 0)).toFixed(2)}`} highlight />
       </dl>
 
-      {quest.tracking_url && (
+      {quest.tracking_url && /^https?:\/\//.test(quest.tracking_url) && (
         <a
           href={quest.tracking_url}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-2 mt-6 bg-lime text-ink-950 font-semibold text-sm px-4 py-2.5 rounded-lg hover:shadow-lime-glow transition-all"
         >
-          Track delivery →
+          View at merchant →
         </a>
       )}
     </div>
@@ -308,7 +339,23 @@ function Stat({ label, value, mono, highlight }: { label: string; value: string;
   );
 }
 
-function PaymentGate({ sessionId, total }: { sessionId: string; total: number }) {
+function resolveCheckoutUrl(apiBase: string) {
+  if (!apiBase) return 'https://checkout.paywithlocus.com';
+  if (/beta-api\.paywithlocus\.com/i.test(apiBase)) return 'https://beta-checkout.paywithlocus.com';
+  return 'https://checkout.paywithlocus.com';
+}
+
+function PaymentGate({
+  sessionId,
+  total,
+  mode,
+  checkoutUrl,
+}: {
+  sessionId: string;
+  total: number;
+  mode: 'mock' | 'real' | null;
+  checkoutUrl: string;
+}) {
   const [err, setErr] = useState<string | null>(null);
   return (
     <div className="rounded-2xl border border-lime/30 bg-gradient-to-br from-lime/5 to-transparent p-6">
@@ -324,15 +371,29 @@ function PaymentGate({ sessionId, total }: { sessionId: string; total: number })
       <p className="text-sm text-ink-400 mb-5">
         Pay from your Locus wallet. Unused budget refunds automatically.
       </p>
-      <div className="rounded-xl overflow-hidden bg-ink-50/90" style={{ minHeight: 680 }}>
-        <LocusCheckout
-          sessionId={sessionId}
-          mode="embedded"
-          onSuccess={() => { /* SSE will flip status to 'paid' via webhook */ }}
-          onCancel={() => setErr('Payment cancelled — you can retry by refreshing.')}
-          onError={(e) => setErr(e.message || 'Checkout error')}
-        />
-      </div>
+      {mode === 'real' ? (
+        <div className="rounded-xl overflow-hidden bg-ink-50/90" style={{ minHeight: 680 }}>
+          <LocusCheckout
+            sessionId={sessionId}
+            mode="embedded"
+            checkoutUrl={checkoutUrl}
+            onSuccess={() => { /* SSE will flip status to 'paid' via webhook */ }}
+            onCancel={() => setErr('Payment cancelled — you can retry by refreshing.')}
+            onError={(e) => setErr(e.message || 'Checkout error')}
+          />
+        </div>
+      ) : (
+        <div className="rounded-xl bg-ink-900 border border-ink-800 p-6 text-center">
+          <div className="text-ink-300 text-sm mb-2">Mock mode</div>
+          <div className="font-mono text-xs text-ink-500">
+            Auto-paying this session in ~2s to simulate the full flow. Switch to{' '}
+            <code className="text-lime">LOCUS_MODE=real</code> to see the Locus Checkout widget.
+          </div>
+          <div className="mt-5 h-1 rounded-full bg-ink-800 overflow-hidden">
+            <div className="h-full w-1/2 shimmer-bar" />
+          </div>
+        </div>
+      )}
       <p className="text-[11px] font-mono text-ink-500 mt-3">
         Session {sessionId.slice(0, 10)}… · 30-minute expiry · settles on Base
       </p>

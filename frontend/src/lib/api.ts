@@ -51,6 +51,17 @@ export async function cancelQuest(id: string): Promise<void> {
   if (!res.ok) throw new Error(`cancelQuest: ${res.status}`);
 }
 
+export async function reconcileQuestPayment(id: string): Promise<{
+  ok: boolean;
+  reconciled: boolean;
+  sessionStatus?: string;
+  questStatus?: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/quest/${id}/reconcile-payment`, { method: 'POST' });
+  if (!res.ok) throw new Error(`reconcileQuestPayment: ${res.status}`);
+  return res.json();
+}
+
 export function streamQuest(
   id: string,
   handlers: {
