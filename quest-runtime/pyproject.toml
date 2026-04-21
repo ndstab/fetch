@@ -1,0 +1,15 @@
+[project]
+name = "fetch-quest-runtime"
+version = "0.1.0"
+description = "Fetch quest runtime — runs inside a Build-with-Locus container for one purchase"
+requires-python = ">=3.12"
+dependencies = [
+  "anthropic>=0.34",
+  "httpx>=0.27",
+  "playwright>=1.46",
+  "psycopg[binary]>=3.2",
+  "python-dotenv>=1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
