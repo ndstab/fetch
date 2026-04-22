@@ -16,6 +16,11 @@ const SCRAPE_TOP_N = 6;
 const SHORTLIST_MODEL = 'claude-sonnet-4-5';
 const PLAN_MODEL = 'claude-haiku-4-5';
 
+function budgetCeiling(budget) {
+  const b = Number(budget) || 0;
+  return Math.round((b + Math.max(0.5, b * 0.15)) * 100) / 100;
+}
+
 export async function planQuest({ brief, budgetUsdc, deadline }) {
   const prompt = [
     `User brief: ${brief}`,
@@ -107,18 +112,22 @@ export async function shortlistOptions({ brief, budgetUsdc, plan, candidates }) 
     merchant_hint: extractDomain(c.url),
   }));
 
+  const ceiling = budgetCeiling(budgetUsdc);
+
   const prompt = [
     `User brief: ${brief}`,
     `Budget (USDC ≈ USD): ${budgetUsdc}`,
+    `Hard price ceiling for options: ${ceiling} USDC (budget + 15% tolerance). NEVER include options priced above this ceiling.`,
     `Canonical product: ${plan.canonical}`,
     plan.redFlags?.length ? `Red flags to avoid: ${plan.redFlags.join('; ')}` : null,
     '',
     'Candidates (array; each has idx, url, title, description, image_url, snippet, merchant_hint):',
     JSON.stringify(cleaned).slice(0, 18000),
     '',
-    'Pick EXACTLY 3 distinct, legitimate options, ranked best-to-worst. Each option must come from the candidate list (use its url verbatim, no invented products).',
-    'If candidates lack prices, extract prices from the snippet text (INR ₹, USD $, etc.) and convert to USDC (assume 1 USD = 1 USDC; 1 USD = 83 INR). Drop items whose price clearly exceeds the budget unless nothing else fits.',
-    'Prefer diverse merchants, meaningful price/delivery/condition trade-offs, and options that match the canonical product exactly.',
+    `Pick UP TO 3 distinct, legitimate options, sorted by ascending price (cheapest first). Each option must come from the candidate list (use its url verbatim, no invented products).`,
+    'Extract prices from snippet text when not provided (INR ₹, USD $, etc.) and convert to USDC (assume 1 USD = 1 USDC; 1 USD = 83 INR).',
+    `STRICT RULE: drop any candidate whose price exceeds ${ceiling} USDC. If fewer than 3 candidates survive, return fewer (or zero) — DO NOT invent or stretch over-budget items just to fill slots.`,
+    'Avoid category/search/browse pages when a specific product URL is available. Prefer diverse merchants and real product detail pages.',
     '',
     'Return strict JSON with this schema:',
     '{',
@@ -146,11 +155,10 @@ export async function shortlistOptions({ brief, budgetUsdc, plan, candidates }) 
   });
 
   const opts = Array.isArray(json.options) ? json.options : [];
-  const picked = opts.slice(0, 3).map((o, i) => {
+  const normalized = opts.map((o) => {
     const price = Number(o.price_usdc);
     const src = cleaned.find((c) => c.idx === o.idx);
     return {
-      idx: i,
       merchant: String(o.merchant || src?.merchant_hint || 'unknown').slice(0, 80),
       title: String(o.title || src?.title || 'Unknown product').slice(0, 200),
       url: String(o.url || src?.url || ''),
@@ -163,8 +171,22 @@ export async function shortlistOptions({ brief, budgetUsdc, plan, candidates }) 
     };
   }).filter((o) => o.url && o.price_usdc);
 
+  const withinBudget = normalized.filter((o) => o.price_usdc <= ceiling);
+  withinBudget.sort((a, b) => a.price_usdc - b.price_usdc);
+
+  const deduped = [];
+  const seenUrls = new Set();
+  for (const o of withinBudget) {
+    if (seenUrls.has(o.url)) continue;
+    seenUrls.add(o.url);
+    deduped.push(o);
+    if (deduped.length >= 3) break;
+  }
+
+  const picked = deduped.map((o, i) => ({ ...o, idx: i }));
+
   if (picked.length === 0) {
-    throw new Error('shortlist: model returned no valid options');
+    throw new Error(`shortlist: no candidates priced at or below the $${ceiling.toFixed(2)} ceiling (budget $${Number(budgetUsdc).toFixed(2)} + 15%)`);
   }
   return picked;
 }

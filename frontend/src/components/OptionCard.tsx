@@ -7,14 +7,21 @@ export function OptionCard({
   onPick,
   disabled,
   rank,
+  total,
+  budget,
 }: {
   option: Option;
   onPick: () => void;
   disabled?: boolean;
   rank: number;
+  total: number;
+  budget?: number;
 }) {
-  const price = Number(option.price_usdc).toFixed(2);
-  const label = rank === 0 ? 'Cheapest' : rank === 1 ? 'Balanced' : 'Fastest';
+  const priceNum = Number(option.price_usdc);
+  const price = priceNum.toFixed(2);
+  const label = labelFor(rank, total);
+  const overBudget = typeof budget === 'number' && priceNum > budget + 0.005;
+  const overBy = overBudget ? priceNum - (budget as number) : 0;
 
   return (
     <motion.div
@@ -57,6 +64,11 @@ export function OptionCard({
             ${price}
           </span>
           <span className="text-xs text-ink-400 font-mono">USDC</span>
+          {overBudget && (
+            <span className="ml-auto text-[10px] font-mono uppercase tracking-widest text-flame bg-flame/10 border border-flame/30 rounded-full px-2 py-0.5">
+              Over by ${overBy.toFixed(2)}
+            </span>
+          )}
         </div>
 
         <div className="text-xs text-ink-300 mb-3">
@@ -77,16 +89,27 @@ export function OptionCard({
 
         <button
           onClick={onPick}
-          disabled={disabled}
+          disabled={disabled || overBudget}
+          title={overBudget ? 'Over budget — increase budget to pick this option' : undefined}
           className={clsx(
             'mt-auto w-full py-2.5 rounded-lg text-sm font-semibold transition-all',
-            'bg-lime text-ink-950 hover:shadow-lime-glow hover:-translate-y-0.5',
-            'disabled:opacity-40 disabled:pointer-events-none',
+            overBudget
+              ? 'bg-ink-800 text-ink-500 border border-ink-700'
+              : 'bg-lime text-ink-950 hover:shadow-lime-glow hover:-translate-y-0.5',
+            'disabled:opacity-50 disabled:pointer-events-none',
           )}
         >
-          Buy this
+          {overBudget ? 'Over budget' : 'Buy this'}
         </button>
       </div>
     </motion.div>
   );
+}
+
+function labelFor(rank: number, total: number) {
+  if (total <= 1) return 'Top pick';
+  if (total === 2) return rank === 0 ? 'Cheapest' : 'Alternative';
+  if (rank === 0) return 'Cheapest';
+  if (rank === total - 1) return 'Premium';
+  return 'Mid-price';
 }

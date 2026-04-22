@@ -63,6 +63,11 @@ export function Landing() {
     setError(null);
     if (!form.brief.trim()) return;
     if (!expanded) { setExpanded(true); return; }
+    const budgetNum = Number(form.budget);
+    if (!Number.isFinite(budgetNum) || budgetNum < 5) {
+      setError('Budget must be at least $5 USDC. Laso virtual cards have a $5.00 minimum.');
+      return;
+    }
     setLoading(true);
     try {
       const { quest } = await createQuest({
@@ -235,8 +240,8 @@ export function Landing() {
               className="overflow-hidden"
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-left">
-                <Field label="Budget (USDC)" required>
-                  <input type="number" step="0.01" min="0" value={form.budget}
+                <Field label="Budget (USDC, min $5)" required>
+                  <input type="number" step="0.01" min="5" value={form.budget}
                     onChange={(e) => setForm({ ...form, budget: e.target.value })}
                     placeholder="10.00" required={expanded} className="input" />
                 </Field>

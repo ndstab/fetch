@@ -258,6 +258,19 @@ export async function continueAfterPick(questId, chosenIdx) {
   const rawCard = Math.round((optPrice * 1.05) * 100) / 100;
   const minCard = 5.00; // Laso's documented minimum
   const maxCard = Math.max(0, Number(q.total_charged_usdc) - Number(q.service_fee_usdc));
+
+  if (maxCard < minCard) {
+    await log(
+      questId,
+      'checkout',
+      `Budget ($${maxCard.toFixed(2)} after fees) is below Laso's $${minCard.toFixed(2)} card minimum. Cancelling and refunding.`,
+      { level: 'error', detail: { maxCard, minCard } },
+    );
+    await fullRefundAndTeardown(questId, q, 'budget-below-laso-min');
+    await setStatus(questId, 'failed');
+    return;
+  }
+
   const cardAmount = Math.min(maxCard, Math.max(minCard, rawCard));
 
   await log(questId, 'checkout', `Minting Laso virtual card for $${cardAmount.toFixed(2)} (option $${optPrice.toFixed(2)} + buffer)…`);

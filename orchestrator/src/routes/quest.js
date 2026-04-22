@@ -22,6 +22,11 @@ router.post('/create', async (req, res) => {
     }
     const budget = Number(budgetUsdc);
     if (!(budget > 0)) return res.status(400).json({ error: 'budget must be > 0' });
+    if (budget < 5) {
+      return res.status(400).json({
+        error: 'Budget must be at least $5 USDC. Laso virtual cards require a $5.00 minimum per purchase.',
+      });
+    }
 
     const fee = Math.round(budget * config.serviceFeeBps / 10_000 * 100) / 100;
     const total = Math.round((budget + fee) * 100) / 100;

@@ -166,6 +166,8 @@ export function Quest() {
                       key={String(o.id)}
                       option={o}
                       rank={i}
+                      total={options.length}
+                      budget={Number(quest.budget_usdc)}
                       onPick={() => pick(o.idx)}
                       disabled={picking !== null}
                     />
