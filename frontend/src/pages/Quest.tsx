@@ -131,6 +131,7 @@ export function Quest() {
         {/* LEFT: Brief + options/receipt */}
         <section>
           <QuestBrief quest={quest} />
+          <ValueExplainer />
 
           <AnimatePresence mode="wait">
             {quest.status === 'created' && quest.checkout_session_id && (
@@ -299,12 +300,12 @@ function Receipt({ quest, options }: { quest: QuestT; options: Option[] }) {
             <path d="M3 8l3 3 7-7" stroke="#07070a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
-        <span className="text-[11px] font-mono uppercase tracking-widest text-lime">Delivered</span>
+        <span className="text-[11px] font-mono uppercase tracking-widest text-lime">Order submitted</span>
       </div>
 
-      <h2 className="font-display text-3xl text-ink-100 mb-1">Order placed.</h2>
+      <h2 className="font-display text-3xl text-ink-100 mb-1">Checkout submitted.</h2>
       <p className="text-ink-400 mb-6">
-        {chosen ? `"${chosen.title}" from ${chosen.merchant}.` : 'Your item is on its way.'}
+        {chosen ? `"${chosen.title}" from ${chosen.merchant}.` : 'Merchant checkout was submitted.'}
       </p>
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 font-mono text-sm">
@@ -324,6 +325,28 @@ function Receipt({ quest, options }: { quest: QuestT; options: Option[] }) {
           View at merchant →
         </a>
       )}
+    </div>
+  );
+}
+
+function ValueExplainer() {
+  return (
+    <div className="mt-6 rounded-2xl border border-ink-800 bg-ink-900/50 p-5">
+      <h3 className="font-display text-lg text-ink-100 mb-3">Why this exists</h3>
+      <div className="grid sm:grid-cols-3 gap-4 text-sm">
+        <div>
+          <div className="text-lime font-mono text-[11px] uppercase tracking-widest mb-1">Problem</div>
+          <p className="text-ink-300">Shopping agents are either manual assistants or risky full autopilot with no spend boundaries.</p>
+        </div>
+        <div>
+          <div className="text-lime font-mono text-[11px] uppercase tracking-widest mb-1">How Fetch solves it</div>
+          <p className="text-ink-300">Each quest gets a hard budget, shortlist transparency, and one-click human approval before checkout.</p>
+        </div>
+        <div>
+          <div className="text-lime font-mono text-[11px] uppercase tracking-widest mb-1">Safety model</div>
+          <p className="text-ink-300">Money is isolated per quest, card spend is scoped, and leftover funds are refunded automatically.</p>
+        </div>
+      </div>
     </div>
   );
 }

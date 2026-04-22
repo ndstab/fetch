@@ -233,6 +233,19 @@ export async function continueAfterPick(questId, chosenIdx) {
 
   // Normalize numeric fields — they arrive from Postgres as strings.
   const optPrice = Number(opt.price_usdc);
+  const budget = Number(q.budget_usdc);
+
+  if (optPrice > budget) {
+    await log(
+      questId,
+      'checkout',
+      `Selected option is over budget ($${optPrice.toFixed(2)} > budget $${budget.toFixed(2)}). Pick a cheaper option.`,
+      { level: 'warn', detail: { budget, optionPrice: optPrice } },
+    );
+    await updateQuest(questId, { chosen_option_idx: null });
+    await setStatus(questId, 'awaiting_pick');
+    return;
+  }
 
   await updateQuest(questId, { chosen_option_idx: chosenIdx });
   await setStatus(questId, 'buying');
@@ -312,7 +325,6 @@ export async function continueAfterPick(questId, chosenIdx) {
   //   user gets back:  total - fee - cardAmount
   //
   // Any under-spend (option was cheaper than projected) comes back too.
-  const budget = Number(q.budget_usdc);
   const refundAmount = Math.max(0, Math.round((budget - cardAmount) * 100) / 100);
 
   let refundTxHash = null;
