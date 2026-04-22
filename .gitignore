@@ -3,3 +3,4 @@ instruct.md
 REMAINING.md
 .env
 docs/
+orchestrator/node_modules
