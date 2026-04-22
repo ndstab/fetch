@@ -54,12 +54,16 @@
 //     not creating them. Session creation is only via the HTTP POST above.
 
 import crypto from 'node:crypto';
+import { proxyFetch } from '../lib/proxyFetch.js';
 
 const LASO_FREE_BASE = 'https://laso.finance';
 
 export function createRealLocus(cfg) {
   if (!cfg.apiKey) {
     throw new Error('LOCUS_API_KEY is required when LOCUS_MODE=real');
+  }
+  if (process.env.HTTPS_PROXY || process.env.https_proxy) {
+    console.log('[locus] HTTPS_PROXY set — x402 and laso.finance calls route via proxy (Laso get-card is US-IP-locked: https://paywithlocus.com/laso.md)');
   }
   if (!/\/api\/?$/.test(cfg.apiBase)) {
     console.warn(`[locus] LOCUS_API_BASE should end in "/api" (got ${cfg.apiBase}). Requests may 404 until this is fixed.`);
@@ -75,7 +79,7 @@ export function createRealLocus(cfg) {
 
   async function buildToken(force = false) {
     if (!force && cachedBuildToken && Date.now() < buildTokenExpiresAt - 60_000) return cachedBuildToken;
-    const res = await fetch(`${buildApiBase}/auth/exchange`, {
+    const res = await proxyFetch(`${buildApiBase}/auth/exchange`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ apiKey: cfg.apiKey }),
@@ -94,7 +98,7 @@ export function createRealLocus(cfg) {
 
   async function buildFetch(pathStr, init = {}, { retriedAuth = false } = {}) {
     const token = await buildToken();
-    const res = await fetch(`${buildApiBase}${pathStr}`, {
+    const res = await proxyFetch(`${buildApiBase}${pathStr}`, {
       ...init,
       headers: {
         ...(init.headers || {}),
@@ -114,7 +118,7 @@ export function createRealLocus(cfg) {
   }
 
   async function locusFetch(pathStr, init = {}, { ok404 = false } = {}) {
-    const res = await fetch(`${apiBase}${pathStr}`, {
+    const res = await proxyFetch(`${apiBase}${pathStr}`, {
       ...init,
       headers: {
         ...(init.headers || {}),
@@ -165,7 +169,7 @@ export function createRealLocus(cfg) {
 
   async function lasoFreeFetch(pathStr, init = {}) {
     const sess = await lasoAuth();
-    const res = await fetch(`${LASO_FREE_BASE}${pathStr}`, {
+    const res = await proxyFetch(`${LASO_FREE_BASE}${pathStr}`, {
       ...init,
       headers: {
         ...(init.headers || {}),

@@ -33,4 +33,13 @@ export const config = {
   questImageUri: process.env.QUEST_IMAGE_URI || 'nginxinc/nginx-unprivileged:stable-alpine',
   questHealthPath: process.env.QUEST_HEALTH_PATH || '/',
   serviceFeeBps: Number(process.env.SERVICE_FEE_BPS || 1000), // basis points (1000 = 10%)
+
+  // When set, Locus and laso.finance HTTP(S) use this proxy. Required for
+  // /api/x402/laso-get-card if your runtime is outside the US (see
+  // https://paywithlocus.com/laso.md — the endpoint is IP-locked to the US).
+  proxy: {
+    https: (process.env.HTTPS_PROXY || process.env.https_proxy || '').trim(),
+    http: (process.env.HTTP_PROXY || process.env.http_proxy || '').trim(),
+    noProxy: process.env.NO_PROXY || process.env.no_proxy || 'localhost,127.0.0.1',
+  },
 };

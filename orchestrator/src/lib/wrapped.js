@@ -4,12 +4,13 @@
 // Cost: billed per-call to the platform wallet (per provider catalog rates).
 
 import { config } from '../config.js';
+import { proxyFetch } from './proxyFetch.js';
 
 const API_KEY = () => config.locus.apiKey;
 const BASE = () => config.locus.apiBase.replace(/\/$/, '');
 
 async function wrappedPost(endpoint, body) {
-  const res = await fetch(`${BASE()}/wrapped/${endpoint}`, {
+  const res = await proxyFetch(`${BASE()}/wrapped/${endpoint}`, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${API_KEY()}`,
@@ -104,7 +105,7 @@ export async function firecrawlScrape(url, { formats = ['markdown'], timeoutMs =
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${BASE()}/wrapped/firecrawl/scrape`, {
+    const res = await proxyFetch(`${BASE()}/wrapped/firecrawl/scrape`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${API_KEY()}`,
