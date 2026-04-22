@@ -222,6 +222,59 @@ export function Landing() {
             </div>
           ))}
         </motion.div>
+
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.55 }}
+          className="mt-12 max-w-4xl w-full grid md:grid-cols-3 gap-4"
+        >
+          <div className="rounded-2xl border border-ink-800 bg-ink-900/60 p-5 text-left">
+            <div className="font-mono text-[11px] uppercase tracking-widest text-lime mb-2">What problem this solves</div>
+            <p className="text-sm text-ink-300 leading-relaxed">
+              Comparing dozens of listings takes time, and autopilot checkout feels risky when spend limits are unclear.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-ink-800 bg-ink-900/60 p-5 text-left">
+            <div className="font-mono text-[11px] uppercase tracking-widest text-lime mb-2">How it solves it</div>
+            <p className="text-sm text-ink-300 leading-relaxed">
+              Fetch plans and hunts automatically, then shows three ranked options so you approve with one deliberate click.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-ink-800 bg-ink-900/60 p-5 text-left">
+            <div className="font-mono text-[11px] uppercase tracking-widest text-lime mb-2">Why it is safer</div>
+            <p className="text-sm text-ink-300 leading-relaxed">
+              Per-quest budget caps and single-use cards keep every purchase scoped. Leftover spend is refunded after settlement.
+            </p>
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.7 }}
+          className="mt-10 max-w-4xl w-full rounded-2xl border border-ink-800 bg-ink-900/50 p-6 text-left"
+        >
+          <h3 className="font-display text-xl text-ink-100 mb-4">Where this is useful</h3>
+          <div className="grid sm:grid-cols-2 gap-4 text-sm text-ink-300">
+            <div className="rounded-xl bg-ink-950/60 border border-ink-800 p-4">
+              <div className="text-ink-100 font-medium mb-1">Time-sensitive buys</div>
+              <p>Find in-stock options fast for gifts, replacements, or urgent household purchases.</p>
+            </div>
+            <div className="rounded-xl bg-ink-950/60 border border-ink-800 p-4">
+              <div className="text-ink-100 font-medium mb-1">Budget-constrained shopping</div>
+              <p>Hard budget + shortlist prevents accidental overspend and hidden checkout surprises.</p>
+            </div>
+            <div className="rounded-xl bg-ink-950/60 border border-ink-800 p-4">
+              <div className="text-ink-100 font-medium mb-1">Repeat purchasing</div>
+              <p>Reuse your intent pattern and let the agent re-run hunt logic with current prices.</p>
+            </div>
+            <div className="rounded-xl bg-ink-950/60 border border-ink-800 p-4">
+              <div className="text-ink-100 font-medium mb-1">Human-in-the-loop automation</div>
+              <p>You still approve the final choice, but no longer do manual search and comparison work.</p>
+            </div>
+          </div>
+        </motion.section>
       </main>
 
       <footer className="px-6 md:px-10 py-6 text-xs font-mono text-ink-500 flex justify-between">
