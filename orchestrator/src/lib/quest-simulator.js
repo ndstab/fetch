@@ -274,6 +274,23 @@ export async function continueAfterPick(questId, chosenIdx) {
   const cardAmount = Math.min(maxCard, Math.max(minCard, rawCard));
 
   await log(questId, 'checkout', `Minting Laso virtual card for $${cardAmount.toFixed(2)} (option $${optPrice.toFixed(2)} + buffer)…`);
+  try {
+    const wb = await L.walletBalance();
+    const bal = Number(wb?.balanceUsdc || 0);
+    if (Number.isFinite(bal) && bal < cardAmount) {
+      await log(
+        questId,
+        'checkout',
+        `Insufficient spendable balance for Laso mint ($${cardAmount.toFixed(2)} needed, $${bal.toFixed(2)} available).`,
+        { level: 'error', detail: { needed: cardAmount, available: bal } },
+      );
+      await fullRefundAndTeardown(questId, q, 'pre-mint-insufficient-balance');
+      await setStatus(questId, 'failed');
+      return;
+    }
+  } catch (err) {
+    await log(questId, 'checkout', `Balance precheck unavailable: ${err.message}`, { level: 'warn' });
+  }
   let card;
   try {
     card = await L.mintLasoCard({
@@ -284,6 +301,7 @@ export async function continueAfterPick(questId, chosenIdx) {
     });
   } catch (err) {
     await log(questId, 'checkout', `Laso mint failed: ${err.message}`, { level: 'error' });
+    await attemptLasoRecovery(questId, L, cardAmount);
     // Even if minting fails, try to refund the escrow and fail cleanly.
     await fullRefundAndTeardown(questId, q, 'mint-failed');
     await setStatus(questId, 'failed');
@@ -423,16 +441,36 @@ function maskPan(pan) {
   return `•••• •••• •••• ${digits.slice(-4)}`;
 }
 
+async function attemptLasoRecovery(questId, L, amountUsdc) {
+  if (typeof L.lasoWithdraw !== 'function') return;
+  const amt = Math.max(0, Number(amountUsdc));
+  if (!(amt >= 0.01)) return;
+  try {
+    const recovery = await L.lasoWithdraw(amt);
+    const txHash = recovery?.tx_hash || recovery?.txHash || null;
+    await log(
+      questId,
+      'settle',
+      `Laso recovery attempted for $${amt.toFixed(2)}${txHash ? ` (tx ${String(txHash).slice(0, 10)}…)` : ''}`,
+      { level: 'info', detail: recovery || null },
+    );
+  } catch (err) {
+    await log(questId, 'settle', `Laso recovery attempt failed: ${err.message}`, { level: 'warn' });
+  }
+}
+
 async function sendRefundBestEffort({ L, to, amountUsdc, reason }) {
   const target = Math.max(0, Number(amountUsdc));
   if (!(target > 0)) return { sentAmount: 0, remaining: 0, partial: false, txHash: null };
+  const round6 = (n) => Math.floor(Number(n) * 1_000_000) / 1_000_000;
   try {
     const tx = await L.sendUsdc({ to, amountUsdc: target, reason });
     return { sentAmount: target, remaining: 0, partial: false, txHash: tx.txHash || null };
   } catch (err) {
+    // First try partial refund from explicit allowance in error details.
     const allowance = Number(err?.details?.allowance);
     if (err?.status === 403 && Number.isFinite(allowance) && allowance > 0) {
-      const partial = Math.min(target, Math.floor(allowance * 1_000_000) / 1_000_000);
+      const partial = round6(Math.min(target, allowance));
       if (partial > 0) {
         try {
           const tx2 = await L.sendUsdc({ to, amountUsdc: partial, reason: `${reason} (partial)` });
@@ -442,11 +480,34 @@ async function sendRefundBestEffort({ L, to, amountUsdc, reason }) {
             partial: partial < target,
             txHash: tx2.txHash || null,
           };
-        } catch (err2) {
-          return { sentAmount: 0, remaining: target, partial: true, txHash: null, error: err2.message };
-        }
+        } catch {}
       }
     }
-    return { sentAmount: 0, remaining: target, partial: false, txHash: null, error: err.message };
+
+    // Fallback: query wallet and attempt best-effort partial refund.
+    try {
+      const wb = await L.walletBalance();
+      const bal = Number(wb?.balanceUsdc || 0);
+      const lim = Number.isFinite(Number(wb?.allowance)) ? Number(wb.allowance) : Infinity;
+      const partial = round6(Math.min(target, bal, lim));
+      if (partial > 0) {
+        const tx3 = await L.sendUsdc({ to, amountUsdc: partial, reason: `${reason} (partial-from-balance)` });
+        return {
+          sentAmount: partial,
+          remaining: Math.max(0, Math.round((target - partial) * 100) / 100),
+          partial: partial < target,
+          txHash: tx3.txHash || null,
+        };
+      }
+      return {
+        sentAmount: 0,
+        remaining: target,
+        partial: false,
+        txHash: null,
+        error: `${err.message}; available balance/allowance is ${round6(Math.min(bal, lim))}`,
+      };
+    } catch (wbErr) {
+      return { sentAmount: 0, remaining: target, partial: false, txHash: null, error: `${err.message}; walletBalance failed: ${wbErr.message}` };
+    }
   }
 }

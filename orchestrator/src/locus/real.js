@@ -57,6 +57,8 @@ import crypto from 'node:crypto';
 import { proxyFetch } from '../lib/proxyFetch.js';
 
 const LASO_FREE_BASE = 'https://laso.finance';
+const FALLBACK_IMAGE_URI = 'nginxinc/nginx-unprivileged:stable-alpine';
+const IMAGE_URI_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._\-/]*(?::[a-zA-Z0-9._\-]+)?(?:@sha256:[a-f0-9]+)?$/;
 
 export function createRealLocus(cfg) {
   if (!cfg.apiKey) {
@@ -345,6 +347,11 @@ export function createRealLocus(cfg) {
     },
 
     async deployQuestContainer({ questId, imageUri, env, region = 'us-east-1', healthCheckPath = '/health' }) {
+      const normalizedImageUri = String(imageUri || '').trim();
+      const safeImageUri = IMAGE_URI_PATTERN.test(normalizedImageUri) ? normalizedImageUri : FALLBACK_IMAGE_URI;
+      if (!IMAGE_URI_PATTERN.test(normalizedImageUri)) {
+        console.warn(`[build] invalid imageUri "${normalizedImageUri}" — falling back to ${FALLBACK_IMAGE_URI}`);
+      }
       const project = await buildFetch('/projects', {
         method: 'POST',
         body: JSON.stringify({
@@ -365,7 +372,7 @@ export function createRealLocus(cfg) {
           projectId,
           environmentId: envId,
           name: 'runtime',
-          source: { type: 'image', imageUri },
+          source: { type: 'image', imageUri: safeImageUri },
           runtime: {
             port: 8080,
             cpu: 256,

@@ -21,7 +21,7 @@ QUEST_IMAGE_URI="nginxinc/nginx-unprivileged:stable-alpine"
 QUEST_HEALTH_PATH="/"
 
 FRONTEND_URL="https://fetch-woad-five.vercel.app"
-PUBLIC_URL_OVERRIDE=""
+PUBLIC_URL_OVERRIDE="https://fetch-orchestrator-7zuypm3gzq-uc.a.run.app"
 
 ENABLE_SERVICES=(
   "run.googleapis.com"

@@ -166,6 +166,7 @@ async function runRealQuest(quest) {
   // side flow so the quest still completes. Fresh accounts may not have the
   // Build API enabled yet; we don't want that to block money movement.
   try {
+    await addTimeline(quest.id, 'system', `Container image: ${config.questImageUri}`);
     await addTimeline(quest.id, 'system', 'Deploying quest container on Build-with-Locus…');
     const container = await L.deployQuestContainer({
       questId: quest.id,

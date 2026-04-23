@@ -5,7 +5,7 @@ import {
 } from '../db/queries.js';
 import { subscribe, broadcast } from '../lib/sse.js';
 import { locus } from '../locus/index.js';
-import { continueAfterPick } from '../lib/quest-simulator.js';
+import { continueAfterPick, startSimulatedQuest } from '../lib/quest-simulator.js';
 import { config } from '../config.js';
 
 export const router = express.Router();
@@ -144,54 +144,70 @@ router.post('/:id/cancel', async (req, res) => {
 });
 
 router.post('/:id/reconcile-payment', async (req, res) => {
-  const { id } = req.params;
-  const q = await getQuest(id);
-  if (!q) return res.status(404).json({ error: 'not found' });
-  if (!q.checkout_session_id) return res.status(400).json({ error: 'missing checkout_session_id' });
-  if (q.status !== 'created') return res.json({ ok: true, already: q.status, reconciled: false });
+  try {
+    const { id } = req.params;
+    const q = await getQuest(id);
+    if (!q) return res.status(404).json({ error: 'not found' });
+    if (!q.checkout_session_id) return res.status(400).json({ error: 'missing checkout_session_id' });
+    if (q.status !== 'created') return res.json({ ok: true, already: q.status, reconciled: false });
 
-  const L = locus();
-  const session = await L.getCheckoutSession(q.checkout_session_id);
-  const status = String(session.status || '').toUpperCase();
+    const L = locus();
+    const session = await L.getCheckoutSession(q.checkout_session_id);
+    const status = String(session.status || '').toUpperCase();
 
-  if (status !== 'PAID') {
-    return res.json({ ok: true, reconciled: false, sessionStatus: session.status || 'unknown' });
-  }
+    if (status !== 'PAID') {
+      return res.json({ ok: true, reconciled: false, sessionStatus: session.status || 'unknown' });
+    }
 
-  const payload = {
-    type: 'checkout.session.paid',
-    data: {
-      sessionId: q.checkout_session_id,
-      payerAddress: session.payerAddress || null,
-      paymentTxHash: session.paymentTxHash || null,
-    },
-  };
-  const webhookRes = await fetch(`${config.publicUrl}/webhooks/checkout`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!webhookRes.ok) {
-    await updateQuest(id, {
-      status: 'paid',
-      paid_at: new Date(),
-      payer_address: session.payerAddress || null,
-      payment_tx_hash: session.paymentTxHash || null,
+    const payload = {
+      type: 'checkout.session.paid',
+      data: {
+        sessionId: q.checkout_session_id,
+        payerAddress: session.payerAddress || null,
+        paymentTxHash: session.paymentTxHash || null,
+      },
+    };
+
+    let webhookOk = false;
+    try {
+      const webhookRes = await fetch(`${config.publicUrl}/webhooks/checkout`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      webhookOk = webhookRes.ok;
+    } catch (err) {
+      console.warn('[reconcile-payment] webhook replay failed, falling back to inline status update:', err.message);
+    }
+
+    if (!webhookOk) {
+      await updateQuest(id, {
+        status: 'paid',
+        paid_at: new Date(),
+        payer_address: session.payerAddress || null,
+        payment_tx_hash: session.paymentTxHash || null,
+      });
+      await addTimeline(
+        id,
+        'system',
+        `Payment received — $${q.total_charged_usdc} USDC${session.paymentTxHash ? ` (tx ${session.paymentTxHash.slice(0, 10)}…)` : ''}`,
+        { level: 'success' },
+      );
+      broadcast(id, { type: 'status', status: 'paid' });
+      // If webhook replay cannot be delivered (e.g. PUBLIC_URL misconfigured),
+      // advance the quest directly so UI doesn't get stuck at "Paid — starting".
+      startSimulatedQuest(id);
+    }
+
+    const refreshed = await getQuest(id);
+    res.json({
+      ok: true,
+      reconciled: true,
+      sessionStatus: session.status || 'PAID',
+      questStatus: refreshed?.status || 'paid',
     });
-    await addTimeline(
-      id,
-      'system',
-      `Payment received — $${q.total_charged_usdc} USDC${session.paymentTxHash ? ` (tx ${session.paymentTxHash.slice(0, 10)}…)` : ''}`,
-      { level: 'success' },
-    );
-    broadcast(id, { type: 'status', status: 'paid' });
+  } catch (err) {
+    console.error('[reconcile-payment]', err);
+    res.status(500).json({ error: err.message || 'reconcile failed' });
   }
-
-  const refreshed = await getQuest(id);
-  res.json({
-    ok: true,
-    reconciled: true,
-    sessionStatus: session.status || 'PAID',
-    questStatus: refreshed?.status || 'paid',
-  });
 });
